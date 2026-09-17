@@ -1,0 +1,84 @@
+-- ============================================================
+-- LESSONS LEARNED — NOT PART OF THE REQUIRED RUN SEQUENCE
+--
+-- Scripts 01-08 above already reflect the corrected pipeline —
+-- you do not need to run anything in this file to reproduce the
+-- project. This documents real bugs found and fixed while building
+-- and (for the MySQL port) actually running this pipeline end-to-
+-- end against test data, kept here as a record rather than
+-- silently deleted.
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- BUG 1: DIM_Region was built at the wrong grain
+-- ------------------------------------------------------------
+-- First attempt included customer_city/state/country columns
+-- directly on DIM_Region. Because a region contains many cities,
+-- SELECT DISTINCT over all five columns produced one row per
+-- unique region+city combination — thousands of rows instead of
+-- the expected 23. That broke every region-level KPI view built
+-- on top of it.
+--
+-- Fix: split the city/state/country detail into its own
+-- DIM_Geography table (region-level DIM_Region stays at exactly
+-- 23 rows). This is how 04_dimension_tables.sql is written now.
+
+-- ------------------------------------------------------------
+-- BUG 2: vw_kpi_by_region was missing the shipping-mode join
+-- ------------------------------------------------------------
+-- First version only joined to DIM_Region and grouped by region,
+-- with no year or shipping-mode breakdown — impossible to power
+-- the dashboard's year/shipping-mode slicers from it.
+--
+-- Fix: add the DIM_Shipping join and order_year to the SELECT and
+-- GROUP BY. This is how 07_kpi_views.sql is written now (VIEW 3).
+
+-- ------------------------------------------------------------
+-- BUG 3: DIM_Geography caused a fact-table fan-out — found by
+-- actually running the join, not by reading the code
+-- ------------------------------------------------------------
+-- DIM_Geography originally included order_region and market
+-- alongside city/state/country, distinct across all five columns.
+-- FACT_Orders' join to it only matches on city/state/country —
+-- so if the same city legitimately appeared with more than one
+-- region/market anywhere in the raw data, that city got more than
+-- one DIM_Geography row, and the join silently multiplied matching
+-- fact rows. This only surfaced when the corrected pipeline was
+-- actually run end-to-end against test data: the fact table came
+-- out with more rows than were staged (10,100 from 8,000 staged
+-- rows) until this was fixed.
+--
+-- Fix: DIM_Geography now holds city/state/country only — region
+-- and market already live in DIM_Region, they don't belong here
+-- too. Re-running the join after the fix produced exactly 8,000
+-- fact rows from 8,000 staged rows.
+
+-- ------------------------------------------------------------
+-- MySQL-PORT NOTE 1: WITH RECURSIVE must follow INSERT INTO
+-- ------------------------------------------------------------
+-- SQL Server (and most dialects) allow:
+--     WITH cte AS (...) INSERT INTO t SELECT ... FROM cte;
+-- MySQL requires the WITH clause to come after INSERT INTO:
+--     INSERT INTO t WITH RECURSIVE cte AS (...) SELECT ... FROM cte;
+-- Porting the DIM_Date build without reordering this throws a
+-- syntax error immediately.
+
+-- ------------------------------------------------------------
+-- MySQL-PORT NOTE 2: recursive depth limit
+-- ------------------------------------------------------------
+-- MySQL's default cte_max_recursion_depth is 1000. Generating one
+-- row per day from 2015-01-01 to 2018-02-03 needs ~1,129 recursions
+-- — over the default, which would silently truncate DIM_Date partway
+-- through. Fixed by running `SET SESSION cte_max_recursion_depth =
+-- 2000;` before the DIM_Date build (04_dimension_tables.sql).
+
+-- ------------------------------------------------------------
+-- MySQL-PORT NOTE 3: "year_month" is a reserved token
+-- ------------------------------------------------------------
+-- MySQL reserves YEAR_MONTH as an interval unit (used in date
+-- arithmetic like INTERVAL '2015-03' YEAR_MONTH), which means it
+-- can't be used bare as a column alias — CREATE VIEW ... AS
+-- year_month throws a syntax error. Found only by actually running
+-- the CREATE VIEW statement; reading the code gave no indication
+-- this alias name was a problem. Fixed by backticking it:
+-- AS `year_month` in vw_monthly_trend (07_kpi_views.sql).

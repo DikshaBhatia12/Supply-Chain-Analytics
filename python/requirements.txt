@@ -1,0 +1,12 @@
+pandas>=1.5
+numpy>=1.23
+matplotlib>=3.6
+seaborn>=0.12
+scipy>=1.9
+jupyter>=1.0
+
+# matplotlib>=3.6 is required specifically because this notebook calls
+# plt.style.use('seaborn-v0_8') — that style name only exists from 3.6
+# onward (older versions used the bare 'seaborn' name and will raise
+# OSError: 'seaborn-v0_8' is not a valid package style on the very first
+# plotting cell).
