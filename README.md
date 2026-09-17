@@ -11,9 +11,6 @@
 *An end-to-end analytics pipeline uncovering critical delivery failures across $36.8M in orders*
 
 </div>
-
-> ✅ **Verified reproducible.** Every step below — the Python cleaning notebook and all 8 MySQL scripts — has been run end-to-end against schema-matching test data with zero errors, on a clean MySQL 8.0 install. Real dollar/percentage figures in this README come from the author's own run against the actual dataset; your numbers will match once you run this against the real 180,519-row file (see *Data & Modeling Notes* for exactly where to get it).
-
 ---
 
 ## 🔴 The Business Problem
